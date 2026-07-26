@@ -5,12 +5,12 @@ import re
 import time
 from collections import defaultdict
 from threading import Thread
-from urllib.parse import urlparse, quote
 
 from flask import Flask, request, jsonify, send_from_directory
 
 from brium.config import Config
 from brium.crawler.spider import Crawler, Page
+from brium.crawler.seeds import for_query, DEFAULT_HOMEPAGES
 from brium.indexer.indexer import Indexer
 from brium.search.engine import SearchEngine
 
@@ -22,6 +22,7 @@ _engine: SearchEngine | None = None
 _crawl_thread: Thread | None = None
 _crawl_status: dict = {"running": False, "pages": 0, "error": ""}
 _auto_seeds: set[str] = set()
+_background_thread: Thread | None = None
 
 _auto_cooldown: dict[str, float] = {}
 _COOLDOWN_SECONDS = 60
@@ -38,6 +39,7 @@ def init(config: Config):
     _cfg = config
     _indexer = Indexer(config.index_db)
     _engine = SearchEngine(config.index_db)
+    _start_background_crawl()
 
 
 static_dir = os.path.join(os.path.dirname(__file__), "static")
@@ -57,15 +59,43 @@ def _rate_limited(ip: str) -> bool:
     return False
 
 
-def _auto_seeds_for(query: str) -> list[str]:
-    slug = query.strip().lower().replace(" ", "_")
-    encoded = quote(slug, safe="")
-    seeds = [
-        f"https://en.wikipedia.org/wiki/{encoded}",
-    ]
-    for lang in ("tr", "simple", "de", "fr", "es"):
-        seeds.append(f"https://{lang}.wikipedia.org/wiki/{encoded}")
-    return seeds
+def _start_background_crawl():
+    global _background_thread
+    if _background_thread and _background_thread.is_alive():
+        return
+    _background_thread = Thread(target=_background_worker, daemon=True)
+    _background_thread.start()
+
+
+def _background_worker():
+    time.sleep(3)
+    seeds = [s for s in DEFAULT_HOMEPAGES if s not in _auto_seeds]
+    if not seeds:
+        return
+    _do_crawl(seeds, max_pages=10)
+
+
+def _do_crawl(seeds: list[str], max_pages: int):
+    if _crawl_status["running"]:
+        return
+    _crawl_status["running"] = True
+    _crawl_status["pages"] = 0
+    _crawl_status["error"] = ""
+    try:
+        crawler = Crawler(_cfg, on_page=_on_page)
+        crawler.seed(seeds)
+        count = crawler.crawl(max_pages)
+        _crawl_status["pages"] = count
+        crawler.close()
+    except Exception as e:
+        _crawl_status["error"] = str(e)
+    finally:
+        _crawl_status["running"] = False
+
+
+def _on_page(page: Page):
+    _indexer.add_page(page)
+    _auto_seeds.add(page.url)
 
 
 @app.route("/")
@@ -87,35 +117,13 @@ def search():
     last = _auto_cooldown.get(q, 0)
     if len(results_dicts) < 3 and not _crawl_status["running"] and (now - last) > _COOLDOWN_SECONDS:
         _auto_cooldown[q] = now
-        seeds = _auto_seeds_for(q)
+        seeds = for_query(q)
         new_seeds = [s for s in seeds if s not in _auto_seeds and _valid_url(s)]
         if new_seeds:
-            max_pages = max(3, min(15, 10 - _indexer.doc_count()))
-
-            def _run():
-                _crawl_status["running"] = True
-                _crawl_status["pages"] = 0
-                _crawl_status["error"] = ""
-                try:
-                    crawler = Crawler(_cfg, on_page=_on_page)
-                    crawler.seed(new_seeds)
-                    count = crawler.crawl(max_pages)
-                    _crawl_status["pages"] = count
-                    crawler.close()
-                except Exception as e:
-                    _crawl_status["error"] = str(e)
-                finally:
-                    _crawl_status["running"] = False
-
-            def _on_page(page: Page):
-                _indexer.add_page(page)
-                _auto_seeds.add(page.url)
-
             for s in new_seeds:
                 _auto_seeds.add(s)
-            global _crawl_thread
-            _crawl_thread = Thread(target=_run, daemon=True)
-            _crawl_thread.start()
+            max_pages = max(5, min(20, 20 - _indexer.doc_count()))
+            Thread(target=_do_crawl, args=(new_seeds, max_pages), daemon=True).start()
 
     return jsonify({
         "results": results_dicts,
@@ -144,25 +152,5 @@ def crawl():
     if _crawl_status["running"]:
         return jsonify({"error": "crawl already running"}), 409
 
-    def _run():
-        _crawl_status["running"] = True
-        _crawl_status["pages"] = 0
-        _crawl_status["error"] = ""
-        try:
-            crawler = Crawler(_cfg, on_page=_on_page)
-            crawler.seed(seeds)
-            count = crawler.crawl(max_pages)
-            _crawl_status["pages"] = count
-            crawler.close()
-        except Exception as e:
-            _crawl_status["error"] = str(e)
-        finally:
-            _crawl_status["running"] = False
-
-    def _on_page(page: Page):
-        _indexer.add_page(page)
-
-    global _crawl_thread
-    _crawl_thread = Thread(target=_run, daemon=True)
-    _crawl_thread.start()
+    Thread(target=_do_crawl, args=(seeds, max_pages), daemon=True).start()
     return jsonify({"message": "crawl started", "seeds": seeds, "max_pages": max_pages})
