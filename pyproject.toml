@@ -1,0 +1,9 @@
+[project]
+name = "brium"
+version = "0.1.0"
+description = "Minimal search engine — crawl, index, search"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+brium = "brium.cli:main"
