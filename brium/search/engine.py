@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import math
 import sqlite3
+import time
 from dataclasses import dataclass
 
-from brium.indexer.indexer import tokenize
+from brium.indexer.indexer import tokenize, bigrams
 
 
 @dataclass
@@ -13,6 +14,9 @@ class SearchResult:
     title: str
     score: float
     snippet: str = ""
+
+
+FRESHNESS_HALF_DAYS = 90.0
 
 
 class SearchEngine:
@@ -26,33 +30,33 @@ class SearchEngine:
         terms = tokenize(query)
         if not terms:
             return []
-        results = self._bm25(terms, top_k)
+        bgs = bigrams(terms)
+        all_terms = list(set(terms + bgs))
+        results = self._ranked(all_terms, top_k)
         return results
 
-    def _bm25(self, terms: list[str], top_k: int) -> list[SearchResult]:
+    def _ranked(self, terms: list[str], top_k: int) -> list[SearchResult]:
         N = self.conn.execute("SELECT COUNT(*) FROM docs").fetchone()[0]
         if N == 0:
             return []
-        avgdl = (
-            self.conn.execute("SELECT AVG(text_len) FROM docs").fetchone()[0] or 1.0
-        )
-        term_ids = []
+        avgdl = self.conn.execute("SELECT AVG(text_len) FROM docs").fetchone()[0] or 1.0
+        now = time.time()
+
+        term_rows = []
         for t in set(terms):
-            row = self.conn.execute(
-                "SELECT id FROM terms WHERE term = ?", (t,)
-            ).fetchone()
+            row = self.conn.execute("SELECT id FROM terms WHERE term = ?", (t,)).fetchone()
             if row:
-                term_ids.append((t, row["id"]))
-        if not term_ids:
+                term_rows.append((t, row["id"]))
+
+        if not term_rows:
             return []
+
         doc_scores: dict[int, float] = {}
-        for term, tid in term_ids:
-            df = self.conn.execute(
-                "SELECT COUNT(*) FROM postings WHERE term_id = ?", (tid,)
-            ).fetchone()[0]
+        for term, tid in term_rows:
+            df = self.conn.execute("SELECT COUNT(*) FROM postings WHERE term_id = ?", (tid,)).fetchone()[0]
             idf = math.log((N - df + 0.5) / (df + 0.5) + 1.0)
             rows = self.conn.execute(
-                """SELECT p.doc_id, p.freq, d.text_len
+                """SELECT p.doc_id, p.freq, p.in_title, d.text_len, d.incoming_links, d.crawled_at
                    FROM postings p JOIN docs d ON p.doc_id = d.id
                    WHERE p.term_id = ?""",
                 (tid,),
@@ -60,8 +64,14 @@ class SearchEngine:
             for r in rows:
                 tf = r["freq"]
                 dl = r["text_len"]
-                score = idf * ((tf * (self._k1 + 1)) / (tf + self._k1 * (1 - self._b + self._b * dl / avgdl)))
+                bm25 = idf * ((tf * (self._k1 + 1)) / (tf + self._k1 * (1 - self._b + self._b * dl / avgdl)))
+                title_boost = 1.0 + (1.0 if r["in_title"] > 0 else 0.0)
+                auth_boost = 1.0 + math.log1p(r["incoming_links"]) * 0.15
+                age_days = (now - r["crawled_at"]) / 86400
+                freshness = 1.0 / (1.0 + age_days / FRESHNESS_HALF_DAYS)
+                score = bm25 * title_boost * auth_boost * (0.5 + 0.5 * freshness)
                 doc_scores[r["doc_id"]] = doc_scores.get(r["doc_id"], 0.0) + score
+
         sorted_docs = sorted(doc_scores.items(), key=lambda x: -x[1])[:top_k]
         results = []
         for doc_id, score in sorted_docs:
