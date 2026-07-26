@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from threading import Thread
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 
 from brium.config import Config
 from brium.crawler.spider import Crawler, Page
@@ -25,6 +25,13 @@ def init(config: Config):
     _indexer = Indexer(config.index_db)
     _engine = SearchEngine(config.index_db)
 
+
+import os
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+
+@app.route("/")
+def index():
+    return send_from_directory(static_dir, "index.html")
 
 @app.route("/search")
 def search():
