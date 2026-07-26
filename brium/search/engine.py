@@ -32,10 +32,10 @@ class SearchEngine:
             return []
         bgs = bigrams(terms)
         all_terms = list(set(terms + bgs))
-        results = self._ranked(all_terms, top_k)
+        results = self._ranked(all_terms, len(terms), top_k)
         return results
 
-    def _ranked(self, terms: list[str], top_k: int) -> list[SearchResult]:
+    def _ranked(self, all_terms: list[str], query_term_count: int, top_k: int) -> list[SearchResult]:
         N = self.conn.execute("SELECT COUNT(*) FROM docs").fetchone()[0]
         if N == 0:
             return []
@@ -43,7 +43,7 @@ class SearchEngine:
         now = time.time()
 
         term_rows = []
-        for t in set(terms):
+        for t in set(all_terms):
             row = self.conn.execute("SELECT id FROM terms WHERE term = ?", (t,)).fetchone()
             if row:
                 term_rows.append((t, row["id"]))
@@ -51,6 +51,7 @@ class SearchEngine:
         if not term_rows:
             return []
 
+        qtc = max(query_term_count, 1)
         doc_scores: dict[int, float] = {}
         for term, tid in term_rows:
             df = self.conn.execute("SELECT COUNT(*) FROM postings WHERE term_id = ?", (tid,)).fetchone()[0]
@@ -65,7 +66,7 @@ class SearchEngine:
                 tf = r["freq"]
                 dl = r["text_len"]
                 bm25 = idf * ((tf * (self._k1 + 1)) / (tf + self._k1 * (1 - self._b + self._b * dl / avgdl)))
-                title_boost = 1.0 + (1.0 if r["in_title"] > 0 else 0.0)
+                title_boost = 1.0 + min(1.0, r["in_title"] / qtc)
                 auth_boost = 1.0 + math.log1p(r["incoming_links"]) * 0.15
                 age_days = (now - r["crawled_at"]) / 86400
                 freshness = 1.0 / (1.0 + age_days / FRESHNESS_HALF_DAYS)
