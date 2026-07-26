@@ -10,7 +10,7 @@ from flask import Flask, request, jsonify, send_from_directory
 
 from brium.config import Config
 from brium.crawler.spider import Crawler, Page
-from brium.crawler.seeds import for_query, DEFAULT_HOMEPAGES
+from brium.crawler.seeds import for_query
 from brium.indexer.indexer import Indexer
 from brium.search.engine import SearchEngine
 
@@ -22,7 +22,6 @@ _engine: SearchEngine | None = None
 _crawl_thread: Thread | None = None
 _crawl_status: dict = {"running": False, "pages": 0, "error": ""}
 _auto_seeds: set[str] = set()
-_background_thread: Thread | None = None
 
 _auto_cooldown: dict[str, float] = {}
 _COOLDOWN_SECONDS = 60
@@ -32,6 +31,7 @@ _RATE_LIMIT = 3
 _RATE_WINDOW = 60
 
 _URL_RE = re.compile(r"^https?://[^\s/$.?#][^\s]*$", re.IGNORECASE)
+_SEEN_QUERIES: set[str] = set()
 
 
 def init(config: Config):
@@ -39,7 +39,6 @@ def init(config: Config):
     _cfg = config
     _indexer = Indexer(config.index_db)
     _engine = SearchEngine(config.index_db)
-    _start_background_crawl()
 
 
 static_dir = os.path.join(os.path.dirname(__file__), "static")
@@ -57,22 +56,6 @@ def _rate_limited(ip: str) -> bool:
         return True
     ts_list.append(now)
     return False
-
-
-def _start_background_crawl():
-    global _background_thread
-    if _background_thread and _background_thread.is_alive():
-        return
-    _background_thread = Thread(target=_background_worker, daemon=True)
-    _background_thread.start()
-
-
-def _background_worker():
-    time.sleep(3)
-    seeds = [s for s in DEFAULT_HOMEPAGES if s not in _auto_seeds]
-    if not seeds:
-        return
-    _do_crawl(seeds, max_pages=10)
 
 
 def _do_crawl(seeds: list[str], max_pages: int):
@@ -115,14 +98,18 @@ def search():
 
     now = time.time()
     last = _auto_cooldown.get(q, 0)
-    if len(results_dicts) < 3 and not _crawl_status["running"] and (now - last) > _COOLDOWN_SECONDS:
+    low_results = len(results_dicts) < 5 or _indexer.doc_count() < 20
+    never_seen = q not in _SEEN_QUERIES
+    _SEEN_QUERIES.add(q)
+
+    if never_seen and not _crawl_status["running"] and (now - last) > _COOLDOWN_SECONDS:
         _auto_cooldown[q] = now
         seeds = for_query(q)
         new_seeds = [s for s in seeds if s not in _auto_seeds and _valid_url(s)]
         if new_seeds:
             for s in new_seeds:
                 _auto_seeds.add(s)
-            max_pages = max(5, min(20, 20 - _indexer.doc_count()))
+            max_pages = max(10, min(30, 50 - _indexer.doc_count()))
             Thread(target=_do_crawl, args=(new_seeds, max_pages), daemon=True).start()
 
     return jsonify({

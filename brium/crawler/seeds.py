@@ -15,6 +15,9 @@ DEFAULT_HOMEPAGES = [
     "https://en.wikipedia.org",
     "https://tr.wikipedia.org",
     "https://www.bbc.com/news",
+    "https://www.aljazeera.com",
+    "https://www.ntv.com.tr",
+    "https://www.hurriyet.com.tr",
 ]
 
 
@@ -36,29 +39,32 @@ def for_query(query: str) -> list[str]:
     seen: set[str] = set()
     seeds: list[str] = []
 
-    # Full query — exact article match on major wikis
-    for lang in ("en", "tr", "simple"):
-        for url in _wiki_api(query, lang, 3):
+    # Full query as-phrase on Turkish + English Wikipedia
+    for lang in ("tr", "en", "simple"):
+        for url in _wiki_api(query, lang, 5):
             if url not in seen:
                 seen.add(url)
                 seeds.append(url)
 
-    # Individual terms — limit to 1 result per term per lang, Turkish first
-    terms = [t for t in query.lower().split() if len(t) > 2]
-    for term in terms[:3]:
+    # Sub-phrases: try the first 3 meaningful bigrams
+    words = [w for w in query.lower().split() if len(w) > 2]
+    phrases = set()
+    for i in range(len(words) - 1):
+        phrases.add(f"{words[i]} {words[i+1]}")
+    for phrase in list(phrases)[:3]:
         for lang in ("tr", "en"):
-            for url in _wiki_api(term, lang, 1):
+            for url in _wiki_api(phrase, lang, 2):
                 if url not in seen:
                     seen.add(url)
                     seeds.append(url)
 
-    # Fallback direct URL guess if still nothing
+    # Individual term fallback
     if not seeds:
-        for lang in ("en", "tr"):
-            slug = query.strip().lower().replace(" ", "_")
-            url = f"https://{lang}.wikipedia.org/wiki/{quote(slug, safe='')}"
-            if url not in seen:
-                seen.add(url)
-                seeds.append(url)
+        for term in words[:3]:
+            for lang in ("tr", "en"):
+                for url in _wiki_api(term, lang, 1):
+                    if url not in seen:
+                        seen.add(url)
+                        seeds.append(url)
 
     return seeds[:15]

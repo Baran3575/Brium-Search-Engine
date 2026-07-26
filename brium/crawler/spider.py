@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 import time
 import logging
 from collections import deque
@@ -21,15 +20,17 @@ class Page:
     html: str
     text: str
     title: str
+    headings: list[str] = field(default_factory=list)
+    snippet: str = ""
     links: list[str] = field(default_factory=list)
 
 
 class Crawler:
     def __init__(self, config: Config, on_page=None):
         self.config = config
-        self.on_page = on_page  # callback(page: Page) -> None
+        self.on_page = on_page
         self.seen: set[str] = set()
-        self.queue: deque[tuple[str, int]] = deque()  # (url, depth)
+        self.queue: deque[tuple[str, int]] = deque()
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": config.user_agent})
 
@@ -72,14 +73,23 @@ class Crawler:
         for tag in soup(["script", "style"]):
             tag.decompose()
         title = soup.title.string.strip() if soup.title else ""
+        headings = []
+        for h in soup.find_all(["h1", "h2", "h3"]):
+            txt = h.get_text(strip=True)
+            if txt:
+                headings.append(txt)
         text = soup.get_text(separator=" ", strip=True)
+        snippet = " ".join(text.split()[:200])
         links = []
         for a in soup.find_all("a", href=True):
             href = urljoin(url, a["href"])
             parsed = urlparse(href)
             if parsed.scheme in ("http", "https") and parsed.netloc:
                 links.append(href)
-        return Page(url=url, html=resp.text, text=text, title=title, links=links)
+        return Page(
+            url=url, html=resp.text, text=text, title=title,
+            headings=headings, snippet=snippet, links=links,
+        )
 
     def _enqueue_links(self, links: list[str], depth: int):
         for link in links:
