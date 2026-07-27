@@ -1,3 +1,5 @@
-from brium.search.engine import SearchEngine, SearchResult
+from __future__ import annotations
 
-__all__ = ["SearchEngine", "SearchResult"]
+from brium.search.engine import SearchEngine
+
+__all__ = ["SearchEngine"]

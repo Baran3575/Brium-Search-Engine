@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Brium.</title>
+<link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<div class="hero" id="hero">
+  <div class="logo">Brium<span>.</span></div>
+  <div class="tagline">Search, Discovered.</div>
+  <div class="search-wrap">
+    <form id="f" autocomplete="off" action="/" method="GET">
+      <input type="text" id="q" name="q" placeholder="Ask anything..." autofocus>
+      <button type="submit">Search</button>
+    </form>
+  </div>
+</div>
+<div class="results" id="results"></div>
+<div class="crawling" id="crawling">Crawling to find your answer…</div>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>

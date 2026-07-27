@@ -43,6 +43,15 @@
 <div class="crawling" id="crawling">Crawling to find your answer…</div>
 
 <script>
+const isAndroid = typeof BriumAndroid !== 'undefined';
+document.addEventListener('click', (e) => {
+  const link = e.target.closest('a');
+  if (link && link.href && link.href.startsWith('http') && isAndroid) {
+    e.preventDefault();
+    BriumAndroid.openInApp(link.href);
+  }
+});
+
 const f = document.getElementById('f');
 const q = document.getElementById('q');
 const r = document.getElementById('results');

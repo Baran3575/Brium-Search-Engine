@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import os
 import tempfile
-from brium.indexer.indexer import tokenize, Indexer
-from brium.crawler.spider import Page
+from brium.index.tokenizer import tokenize
+from brium.index.engine import Indexer
+from brium.base.types import Page
 
 
 def test_tokenize():

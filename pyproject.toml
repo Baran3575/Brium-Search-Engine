@@ -7,3 +7,4 @@ dependencies = []
 
 [project.scripts]
 brium = "brium.cli:main"
+brium-ui = "Brium.server:main"

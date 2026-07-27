@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from brium.search.engine import SearchEngine
-from brium.indexer.indexer import Indexer
-from brium.crawler.spider import Page
+from brium.index.engine import Indexer
+from brium.base.types import Page
 
 
 @dataclass
