@@ -10,7 +10,7 @@ from flask import Flask, request, jsonify, send_from_directory
 
 from brium.config import Config
 from brium.crawler.spider import Crawler, Page
-from brium.crawler.seeds import for_query
+from brium.algorithm.seeds import for_query, DEFAULT_HOMEPAGES
 from brium.indexer.indexer import Indexer
 from brium.search.engine import SearchEngine
 
