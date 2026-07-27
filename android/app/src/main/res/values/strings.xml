@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Brium.</string>
+    <string name="app_name">Brium</string>
     <string name="settings_title">Settings</string>
     <string name="server_url_label">Server URL</string>
     <string name="server_url_summary">Address of your Brium search server</string>

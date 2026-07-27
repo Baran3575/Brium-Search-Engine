@@ -5,12 +5,14 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.os.Bundle
 import android.view.KeyEvent
+import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import android.widget.ProgressBar
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
@@ -49,55 +51,71 @@ class MainActivity : AppCompatActivity() {
         root.addView(progressBar)
 
         setContentView(root)
-        supportActionBar?.hide()
 
         loadServerUrl()
     }
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun setupWebView() {
-        webView.addJavascriptInterface(BriumAndroidInterface(this), "BriumAndroid")
+        try {
+            webView.addJavascriptInterface(BriumAndroidInterface(this), "BriumAndroid")
 
-        with(webView.settings) {
-            javaScriptEnabled = true
-            domStorageEnabled = true
-            databaseEnabled = true
-            useWideViewPort = true
-            loadWithOverviewMode = true
-            builtInZoomControls = true
-            displayZoomControls = false
-            setSupportZoom(true)
-            allowFileAccess = false
-            allowContentAccess = false
-            mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-        }
+            with(webView.settings) {
+                javaScriptEnabled = true
+                domStorageEnabled = true
+                useWideViewPort = true
+                loadWithOverviewMode = true
+                builtInZoomControls = true
+                displayZoomControls = false
+                setSupportZoom(true)
+                allowFileAccess = false
+                allowContentAccess = false
+                mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+            }
 
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK)) {
-            WebSettingsCompat.setForceDark(
-                webView.settings,
-                WebSettingsCompat.FORCE_DARK_AUTO
-            )
-        }
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK)) {
+                WebSettingsCompat.setForceDark(
+                    webView.settings,
+                    WebSettingsCompat.FORCE_DARK_AUTO
+                )
+            }
 
-        webView.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(
-                view: WebView,
-                request: WebResourceRequest
-            ): Boolean {
-                val url = request.url.toString()
-                if (url.startsWith("http://") || url.startsWith("https://")) {
-                    view.loadUrl(url)
-                    return true
+            webView.webViewClient = object : WebViewClient() {
+                override fun shouldOverrideUrlLoading(
+                    view: WebView,
+                    request: WebResourceRequest
+                ): Boolean {
+                    val url = request.url.toString()
+                    if (url.startsWith("http://") || url.startsWith("https://")) {
+                        view.loadUrl(url)
+                        return true
+                    }
+                    return false
                 }
-                return false
+
+                override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+                    progressBar.visibility = View.VISIBLE
+                }
+
+                override fun onReceivedError(
+                    view: WebView?,
+                    errorCode: Int,
+                    description: String?,
+                    failingUrl: String?
+                ) {
+                    progressBar.visibility = View.GONE
+                }
             }
 
-            override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
-                progressBar.visibility = android.view.View.VISIBLE
+            webView.webChromeClient = BriumChromeClient(progressBar)
+        } catch (e: Exception) {
+            val errorView = TextView(this).apply {
+                text = "Failed to initialize: ${e.message}"
+                textSize = 16f
+                setPadding(24, 24, 24, 24)
             }
+            setContentView(errorView)
         }
-
-        webView.webChromeClient = BriumChromeClient(progressBar)
     }
 
     fun openUrlInApp(url: String) {
@@ -108,8 +126,7 @@ class MainActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("brium", MODE_PRIVATE)
         val serverUrl = prefs.getString("server_url", DEFAULT_SERVER_URL)
             ?: DEFAULT_SERVER_URL
-        val path = intent.getStringExtra("open_url")
-        webView.loadUrl(path ?: serverUrl)
+        webView.loadUrl(serverUrl)
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
