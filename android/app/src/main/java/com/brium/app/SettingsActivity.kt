@@ -1,12 +1,9 @@
 package com.brium.app
 
-import android.content.SharedPreferences
+import android.content.Intent
 import android.os.Bundle
-import android.widget.EditText
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.preference.PreferenceManager
 
 class SettingsActivity : AppCompatActivity() {
 
@@ -26,8 +23,9 @@ class SettingsActivity : AppCompatActivity() {
                 Toast.makeText(this, "URL cannot be empty", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            prefs.edit().putString("server_url", url).apply()
-            Toast.makeText(this, "Server URL saved. Restart to apply.", Toast.LENGTH_LONG).show()
+            val normalized = if (url.startsWith("http")) url else "http://$url"
+            prefs.edit().putString("server_url", normalized).apply()
+            setResult(RESULT_OK, Intent().putExtra("server_url", normalized))
             finish()
         }
     }
