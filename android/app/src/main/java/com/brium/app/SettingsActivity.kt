@@ -4,23 +4,30 @@ import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import com.google.android.material.appbar.MaterialToolbar
 
 class SettingsActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
+
+        val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
+        setSupportActionBar(toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
+        supportActionBar?.setDisplayShowHomeEnabled(true)
+        toolbar.setNavigationOnClickListener { finish() }
 
         val prefs = getSharedPreferences("brium", MODE_PRIVATE)
-        val currentUrl = prefs.getString("server_url", "http://10.0.2.2:8000") ?: "http://10.0.2.2:8000"
+        val currentUrl = prefs.getString("server_url", "") ?: ""
 
-        findViewById<android.widget.EditText>(R.id.serverUrlInput).setText(currentUrl)
+        val input = findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.serverUrlInput)
+        input.setText(currentUrl)
 
-        findViewById<android.widget.Button>(R.id.saveButton).setOnClickListener {
-            val url = findViewById<android.widget.EditText>(R.id.serverUrlInput).text.toString().trim()
+        findViewById<com.google.android.material.button.MaterialButton>(R.id.saveButton).setOnClickListener {
+            val url = input.text.toString().trim()
             if (url.isBlank()) {
-                Toast.makeText(this, "URL cannot be empty", Toast.LENGTH_SHORT).show()
+                input.error = "Enter a server URL"
                 return@setOnClickListener
             }
             val normalized = if (url.startsWith("http")) url else "http://$url"

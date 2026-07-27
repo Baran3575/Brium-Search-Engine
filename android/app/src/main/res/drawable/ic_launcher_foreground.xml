@@ -6,7 +6,7 @@
     android:viewportHeight="108">
     <!-- B letter -->
     <path
-        android:fillColor="#6366f1"
+        android:fillColor="#6750A4"
         android:pathData="M36,36h22c8,0 14,6 14,14c0,5 -2.5,9.5 -6.5,12c4,2.5 6.5,7 6.5,12c0,8 -6,14 -14,14h-22zM42,42v12h14c4,0 7,-3 7,-6c0,-3.5 -3,-6 -7,-6zM42,58v16h16c4,0 7,-3 7,-7c0,-3.5 -3,-6.5 -7,-6.5z" />
     <path
         android:fillColor="#ffffff"

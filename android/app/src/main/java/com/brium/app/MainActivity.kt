@@ -7,11 +7,11 @@ import android.net.http.SslError
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.View
+import android.view.inputmethod.EditorInfo
 import android.webkit.SslErrorHandler
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.LinearLayout
@@ -20,6 +20,7 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
+import com.google.android.material.appbar.MaterialToolbar
 
 class MainActivity : AppCompatActivity() {
 
@@ -27,6 +28,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var progressBar: ProgressBar
     private lateinit var errorView: LinearLayout
     private lateinit var errorMessage: TextView
+    private lateinit var urlBar: EditText
+    private lateinit var navBack: ImageButton
+    private lateinit var navForward: ImageButton
+    private lateinit var navRefresh: ImageButton
 
     private var currentUrl: String? = null
 
@@ -38,7 +43,7 @@ class MainActivity : AppCompatActivity() {
             if (newUrl != null && newUrl != currentUrl) {
                 currentUrl = newUrl
                 if (::webView.isInitialized) {
-                    loadServerUrl()
+                    loadUrl(currentUrl!!)
                 }
             }
         }
@@ -46,71 +51,86 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         val prefs = getSharedPreferences("brium", MODE_PRIVATE)
         val serverUrl = prefs.getString("server_url", null)
-
         if (serverUrl.isNullOrBlank()) {
-            showSetupScreen()
+            showSettings()
         } else {
             currentUrl = serverUrl
-            showMainScreen()
+            showBrowser()
         }
     }
 
-    private fun showSetupScreen() {
-        setContentView(R.layout.activity_setup)
+    private fun showSettings() {
+        val intent = Intent(this, SettingsActivity::class.java)
+        settingsLauncher.launch(intent)
+    }
 
-        val input = findViewById<EditText>(R.id.serverUrlInput)
-        val connect = findViewById<Button>(R.id.connectButton)
-
-        connect.setOnClickListener {
-            val url = input.text.toString().trim()
-            if (url.isBlank()) {
-                input.error = "Enter a server URL"
-                return@setOnClickListener
-            }
-            val normalized = if (url.startsWith("http")) url else "http://$url"
-            getSharedPreferences("brium", MODE_PRIVATE)
-                .edit()
-                .putString("server_url", normalized)
-                .apply()
-            currentUrl = normalized
-            showMainScreen()
+    private fun showSetupIfNeeded() {
+        val prefs = getSharedPreferences("brium", MODE_PRIVATE)
+        val serverUrl = prefs.getString("server_url", null)
+        if (serverUrl.isNullOrBlank()) {
+            showSettings()
         }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
-    private fun showMainScreen() {
+    private fun showBrowser() {
         setContentView(R.layout.activity_main)
 
         webView = findViewById(R.id.webView)
         progressBar = findViewById(R.id.progressBar)
         errorView = findViewById(R.id.errorView)
         errorMessage = findViewById(R.id.errorMessage)
-
-        val toolbar = findViewById<androidx.appcompat.widget.Toolbar>(R.id.toolbar)
-        setSupportActionBar(toolbar)
-        supportActionBar?.setDisplayShowTitleEnabled(false)
+        urlBar = findViewById(R.id.urlBar)
+        navBack = findViewById(R.id.navBack)
+        navForward = findViewById(R.id.navForward)
+        navRefresh = findViewById(R.id.navRefresh)
 
         findViewById<ImageButton>(R.id.settingsButton).setOnClickListener {
             settingsLauncher.launch(Intent(this, SettingsActivity::class.java))
         }
 
-        findViewById<ImageButton>(R.id.refreshButton).setOnClickListener {
+        navBack.setOnClickListener {
+            if (webView.canGoBack()) webView.goBack()
+        }
+
+        navForward.setOnClickListener {
+            if (webView.canGoForward()) webView.goForward()
+        }
+
+        navRefresh.setOnClickListener {
             webView.reload()
         }
 
-        findViewById<Button>(R.id.retryButton).setOnClickListener {
-            loadServerUrl()
+        urlBar.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_GO) {
+                val input = urlBar.text.toString().trim()
+                if (input.isNotBlank()) {
+                    loadInWebView(input)
+                }
+                urlBar.clearFocus()
+                hideKeyboard()
+                true
+            } else false
         }
 
-        findViewById<Button>(R.id.changeServerButton).setOnClickListener {
+        urlBar.setOnFocusChangeListener { _, hasFocus ->
+            if (hasFocus) {
+                urlBar.selectAll()
+            }
+        }
+
+        findViewById<View>(R.id.retryButton).setOnClickListener {
+            currentUrl?.let { loadUrl(it) }
+        }
+
+        findViewById<View>(R.id.changeServerButton).setOnClickListener {
             getSharedPreferences("brium", MODE_PRIVATE)
                 .edit()
                 .remove("server_url")
                 .apply()
-            showSetupScreen()
+            showSettings()
         }
 
         try {
@@ -144,21 +164,24 @@ class MainActivity : AppCompatActivity() {
                 ): Boolean {
                     val url = request.url.toString()
                     if (url.startsWith("http://") || url.startsWith("https://")) {
-                        view.loadUrl(url)
-                        return true
+                        return false
                     }
                     return false
                 }
 
                 override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+                    url?.let { urlBar.setText(it) }
                     progressBar.visibility = View.VISIBLE
                     progressBar.progress = 0
+                    updateNavButtons()
                 }
 
                 override fun onPageFinished(view: WebView?, url: String?) {
                     progressBar.progress = 100
                     progressBar.visibility = View.GONE
                     errorView.visibility = View.GONE
+                    webView.visibility = View.VISIBLE
+                    updateNavButtons()
                 }
 
                 override fun onReceivedError(
@@ -169,7 +192,7 @@ class MainActivity : AppCompatActivity() {
                 ) {
                     progressBar.visibility = View.GONE
                     if (failingUrl == currentUrl || errorCode == ERROR_HOST_LOOKUP) {
-                        showError("Could not reach server at\n$failingUrl")
+                        showError(getString(R.string.connection_error), "$failingUrl\n$description")
                     }
                 }
 
@@ -183,49 +206,74 @@ class MainActivity : AppCompatActivity() {
             }
 
             webView.webChromeClient = BriumChromeClient(progressBar)
-
-            loadServerUrl()
+            loadUrl(currentUrl!!)
         } catch (e: Exception) {
-            showError("Failed to initialize: ${e.message}")
+            showError("Error", e.message ?: "Unknown error")
         }
     }
 
-    private fun loadServerUrl() {
+    private fun loadInWebView(input: String) {
+        val url = if (input.startsWith("http://") || input.startsWith("https://")) {
+            input
+        } else if (input.contains(".") && !input.contains(" ")) {
+            "http://$input"
+        } else {
+            currentUrl?.let { base ->
+                val separator = if (base.contains("?")) "&" else "?"
+                "$base$separator${android.net.Uri.encode("q")}=${android.net.Uri.encode(input)}"
+            } ?: return
+        }
+        loadUrl(url)
+    }
+
+    private fun loadUrl(url: String) {
+        showSetupIfNeeded()
         errorView.visibility = View.GONE
         webView.visibility = View.VISIBLE
-        currentUrl?.let { webView.loadUrl(it) }
-    }
-
-    private fun showError(message: String) {
-        webView.visibility = View.GONE
-        errorView.visibility = View.VISIBLE
-        errorMessage.text = message
-    }
-
-    fun openUrlInApp(url: String) {
         webView.loadUrl(url)
     }
 
+    private fun showError(title: String, message: String) {
+        webView.visibility = View.GONE
+        errorView.visibility = View.VISIBLE
+        errorMessage.text = "$title\n$message"
+    }
+
+    private fun updateNavButtons() {
+        navBack.isEnabled = webView.canGoBack()
+        navForward.isEnabled = webView.canGoForward()
+        navBack.alpha = if (webView.canGoBack()) 1f else 0.3f
+        navForward.alpha = if (webView.canGoForward()) 1f else 0.3f
+    }
+
+    private fun hideKeyboard() {
+        val imm = getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+        imm.hideSoftInputFromWindow(urlBar.windowToken, 0)
+    }
+
+    fun openUrlInApp(url: String) {
+        loadUrl(url)
+    }
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        if (keyCode == KeyEvent.KEYCODE_BACK && webView.canGoBack()) {
-            webView.goBack()
-            return true
+        if (keyCode == KeyEvent.KEYCODE_BACK) {
+            if (webView.canGoBack()) {
+                webView.goBack()
+                return true
+            }
+            showSetupIfNeeded()
         }
         return super.onKeyDown(keyCode, event)
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        if (::webView.isInitialized) {
-            webView.saveState(outState)
-        }
+        if (::webView.isInitialized) webView.saveState(outState)
     }
 
     override fun onRestoreInstanceState(savedInstanceState: Bundle) {
         super.onRestoreInstanceState(savedInstanceState)
-        if (::webView.isInitialized) {
-            webView.restoreState(savedInstanceState)
-        }
+        if (::webView.isInitialized) webView.restoreState(savedInstanceState)
     }
 
     override fun onResume() {
@@ -233,16 +281,12 @@ class MainActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("brium", MODE_PRIVATE)
         val saved = prefs.getString("server_url", null)
         if (saved.isNullOrBlank()) {
-            if (::webView.isInitialized) {
-                showSetupScreen()
-            }
+            showSettings()
             return
         }
         if (currentUrl == null) {
             currentUrl = saved
-        }
-        if (::webView.isInitialized && webView.url == null) {
-            loadServerUrl()
+            if (::webView.isInitialized) loadUrl(currentUrl!!)
         }
     }
 }
