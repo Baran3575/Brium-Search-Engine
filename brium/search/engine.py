@@ -23,8 +23,8 @@ class SearchEngine:
     def __init__(self, db_path: str):
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
-        self._k1 = 1.5
-        self._b = 0.75
+        self._k1 = 1.2
+        self._b = 0.4
 
     def search(self, query: str, top_k: int = 20) -> list[SearchResult]:
         terms = tokenize(query)
@@ -84,12 +84,28 @@ class SearchEngine:
             doc = self.conn.execute(
                 "SELECT url, title, snippet FROM docs WHERE id = ?", (doc_id,)
             ).fetchone()
+            title = doc["title"] or ""
             snippet = doc["snippet"] or ""
-            # ponytail: O(N*M) phrase scan, fine at <100K docs; token-position index when larger
-            phrase_match = raw_query.lower() in snippet.lower()
-            entity_boost = 2.0 if phrase_match else 1.0
+
+            # Entity boost: check title + snippet for query phrases
+            qlow = raw_query.lower()
+            tlow = title.lower()
+            # First bigram (usually the named entity)
+            first_bg = " ".join(qlow.split()[:2])
+            # Full query phrase anywhere in page (snippet covers early content)
+            phrase_in_title = qlow in tlow
+            entity_in_title = first_bg in tlow
+            phrase_in_snippet = qlow in snippet.lower()
+            entity_boost = 1.0
+            if phrase_in_title:
+                entity_boost = 3.0
+            elif entity_in_title:
+                entity_boost = 2.5
+            elif phrase_in_snippet:
+                entity_boost = 2.0
+
             results.append(SearchResult(
-                url=doc["url"], title=doc["title"],
+                url=doc["url"], title=title,
                 score=score * entity_boost, snippet=_make_snippet(snippet, raw_query),
             ))
         results.sort(key=lambda r: -r.score)

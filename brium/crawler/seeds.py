@@ -39,26 +39,38 @@ def for_query(query: str) -> list[str]:
     seen: set[str] = set()
     seeds: list[str] = []
 
-    # Full query as-phrase on Turkish + English Wikipedia
+    words = [w for w in query.lower().split() if len(w) > 2]
+    if not words:
+        words = query.lower().split()
+
+    # 1. First bigram (most specific — usually the named entity)
+    if len(words) >= 2:
+        phrase = f"{words[0]} {words[1]}"
+        for lang in ("tr", "en"):
+            for url in _wiki_api(phrase, lang, 5):
+                if url not in seen:
+                    seen.add(url)
+                    seeds.append(url)
+
+    # 2. Full query on Turkish + English Wikipedia
     for lang in ("tr", "en", "simple"):
         for url in _wiki_api(query, lang, 5):
             if url not in seen:
                 seen.add(url)
                 seeds.append(url)
 
-    # Sub-phrases: try the first 3 meaningful bigrams
-    words = [w for w in query.lower().split() if len(w) > 2]
-    phrases = set()
-    for i in range(len(words) - 1):
-        phrases.add(f"{words[i]} {words[i+1]}")
-    for phrase in list(phrases)[:3]:
+    # 3. Remaining bigrams (ordered, not random)
+    for i in range(1, len(words) - 1):
+        if len(seeds) >= 15:
+            break
+        phrase = f"{words[i]} {words[i+1]}"
         for lang in ("tr", "en"):
             for url in _wiki_api(phrase, lang, 2):
                 if url not in seen:
                     seen.add(url)
                     seeds.append(url)
 
-    # Individual term fallback
+    # 4. Individual terms as fallback
     if not seeds:
         for term in words[:3]:
             for lang in ("tr", "en"):
