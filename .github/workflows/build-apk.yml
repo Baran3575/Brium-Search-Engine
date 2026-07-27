@@ -35,11 +35,22 @@ jobs:
           gradle-version: "8.11.1"
           cache-read-only: false
 
+      - name: Generate keystore for signing
+        run: |
+          keytool -genkey -v -keystore brium.jks -keyalg RSA -keysize 2048 \
+            -validity 10000 -alias brium \
+            -storepass android -keypass android \
+            -dname "CN=Brium, OU=Dev, O=Brium, L=, ST=, C="
+
       - name: Build arm64-v8a release APK
         working-directory: android
         run: gradle assembleRelease
         env:
           ANDROID_HOME: $ANDROID_HOME
+          KEYSTORE_PATH: ${{ github.workspace }}/brium.jks
+          KEYSTORE_PASSWORD: android
+          KEY_ALIAS: brium
+          KEY_PASSWORD: android
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

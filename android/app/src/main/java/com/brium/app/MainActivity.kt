@@ -95,13 +95,9 @@ class MainActivity : AppCompatActivity() {
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                 progressBar.visibility = android.view.View.VISIBLE
             }
-
-            override fun onPageFinished(view: WebView?, url: String?) {
-                progressBar.visibility = android.view.View.GONE
-            }
         }
 
-        webView.webChromeClient = BriumChromeClient()
+        webView.webChromeClient = BriumChromeClient(progressBar)
     }
 
     fun openUrlInApp(url: String) {

@@ -17,8 +17,18 @@ android {
         buildConfigField("String", "DEFAULT_SERVER_URL", "\"http://10.0.2.2:8000\"")
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file(System.getenv("KEYSTORE_PATH") ?: "debug.keystore")
+            storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "android"
+            keyAlias = System.getenv("KEY_ALIAS") ?: "brium"
+            keyPassword = System.getenv("KEY_PASSWORD") ?: "android"
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
